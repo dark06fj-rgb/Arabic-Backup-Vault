@@ -187,8 +187,8 @@ class MainActivity : ComponentActivity() {
                         val entry = zip.nextEntry ?: break
                         entries++
                         check(entries <= 5000) { "عدد ملفات ZIP أكبر من الحد المسموح" }
-                        val path = entry.name.replace('\\', '/')
-                        check(!path.startsWith("/") && path.split('/').none { it == ".." || it.isBlank() }) {
+                        val path = entry.name.replace('\\', '/').trimEnd('/')
+                        check(path.isNotBlank() && !path.startsWith("/") && path.split('/').none { it == ".." || it == "." || it.isBlank() }) {
                             "ملف ZIP يحتوي مساراً غير آمن"
                         }
                         if (!entry.isDirectory) {
