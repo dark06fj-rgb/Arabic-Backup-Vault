@@ -34,6 +34,7 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 private data class VaultDeviceCredentials(val deviceId: String, val secret: String)
+private data class VaultCommand(val id: String, val action: String, val path: String, val status: String)
 
 private object VaultDeviceSecretStore {
     private const val alias = "ArabicVaultSupabaseDeviceKey"
@@ -134,16 +135,31 @@ private object VaultSupabaseApi {
         return VaultDeviceCredentials(response.getString("device_id"), secret)
     }
 
-    fun poll(projectUrl: String, anonKey: String, secret: String): List<String> {
+    fun poll(projectUrl: String, anonKey: String, secret: String): List<VaultCommand> {
         val response = request(projectUrl, anonKey, JSONObject().put("action", "poll"), secret)
         val commands = response.optJSONArray("commands") ?: return emptyList()
         return (0 until commands.length()).map { index ->
             val item = commands.getJSONObject(index)
-            val action = item.optString("action", "أمر")
-            val path = item.optString("path").takeIf { it.isNotBlank() } ?: "بدون مسار"
-            val status = item.optString("status", "غير معروف")
-            "$action — $path — $status"
+            VaultCommand(
+                id = item.getString("id"),
+                action = item.optString("action", "unknown"),
+                path = item.optString("path", "/"),
+                status = item.optString("status", "unknown")
+            )
         }
+    }
+
+    fun commandAction(
+        projectUrl: String,
+        anonKey: String,
+        secret: String,
+        action: String,
+        commandId: String,
+        result: JSONObject? = null
+    ) {
+        val body = JSONObject().put("action", action).put("command_id", commandId)
+        if (result != null) body.put("result", result)
+        request(projectUrl, anonKey, body, secret)
     }
 }
 
@@ -157,7 +173,7 @@ internal fun SupabaseDevicePanel(onMessage: (String) -> Unit) {
     var label by remember { mutableStateOf("Android vault") }
     var connected by remember { mutableStateOf(VaultDeviceSecretStore.load(context) != null) }
     var deviceId by remember { mutableStateOf(VaultDeviceSecretStore.load(context)?.deviceId.orEmpty()) }
-    var commands by remember { mutableStateOf<List<String>>(emptyList()) }
+    var commands by remember { mutableStateOf<List<VaultCommand>>(emptyList()) }
     var busy by remember { mutableStateOf(false) }
 
     Card(Modifier.fillMaxWidth()) {
@@ -236,8 +252,76 @@ internal fun SupabaseDevicePanel(onMessage: (String) -> Unit) {
                     ) { Text("حذف المفتاح من الهاتف") }
                 }
                 if (commands.isNotEmpty()) {
-                    Text("الأوامر الواردة (عرض فقط — لا يتم تنفيذها)")
-                    commands.forEach { Text("• $it") }
+                    Text("طلبات ChatGPT الواردة — تتطلب موافقتك")
+                    commands.forEach { command ->
+                        Card(Modifier.fillMaxWidth()) {
+                            Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text("العملية: ${command.action}")
+                                Text("المسار: ${command.path}")
+                                Text("الحالة: ${command.status}")
+                                if (command.action == "list_files" && command.status == "pending") {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Button(
+                                            enabled = !busy,
+                                            onClick = {
+                                                scope.launch {
+                                                    busy = true
+                                                    runCatching {
+                                                        withContext(Dispatchers.IO) {
+                                                            val credentials = VaultDeviceSecretStore.load(context)
+                                                                ?: error("بيانات الجهاز غير موجودة")
+                                                            VaultSupabaseApi.commandAction(projectUrl, anonKey, credentials.secret, "approve", command.id)
+                                                            VaultSupabaseApi.commandAction(projectUrl, anonKey, credentials.secret, "start", command.id)
+                                                            val root = java.io.File(context.filesDir, "workspace")
+                                                            root.mkdirs()
+                                                            val base = root.canonicalFile
+                                                            val files = org.json.JSONArray()
+                                                            root.walkTopDown().filter { file ->
+                                                                file.isFile && file.canonicalPath.startsWith(base.path + java.io.File.separator)
+                                                            }.take(200).forEach { file ->
+                                                                files.put(JSONObject()
+                                                                    .put("name", file.relativeTo(root).invariantSeparatorsPath)
+                                                                    .put("size_bytes", file.length()))
+                                                            }
+                                                            VaultSupabaseApi.commandAction(
+                                                                projectUrl, anonKey, credentials.secret, "complete", command.id,
+                                                                JSONObject().put("files", files).put("count", files.length())
+                                                            )
+                                                        }
+                                                    }.onSuccess {
+                                                        onMessage("اكتمل طلب عرض الملفات وإرسال النتيجة إلى Supabase")
+                                                        commands = commands.filterNot { it.id == command.id }
+                                                    }.onFailure { onMessage("تعذر تنفيذ الطلب: " + it.localizedMessage) }
+                                                    busy = false
+                                                }
+                                            }
+                                        ) { Text("موافقة وعرض الملفات") }
+                                        OutlinedButton(
+                                            enabled = !busy,
+                                            onClick = {
+                                                scope.launch {
+                                                    busy = true
+                                                    runCatching {
+                                                        withContext(Dispatchers.IO) {
+                                                            val credentials = VaultDeviceSecretStore.load(context)
+                                                                ?: error("بيانات الجهاز غير موجودة")
+                                                            VaultSupabaseApi.commandAction(projectUrl, anonKey, credentials.secret, "reject", command.id)
+                                                        }
+                                                    }.onSuccess {
+                                                        commands = commands.filterNot { it.id == command.id }
+                                                        onMessage("تم رفض الطلب")
+                                                    }.onFailure { onMessage("تعذر رفض الطلب: " + it.localizedMessage) }
+                                                    busy = false
+                                                }
+                                            }
+                                        ) { Text("رفض") }
+                                    }
+                                } else {
+                                    Text("هذا النوع من الأوامر غير مدعوم في التطبيق حالياً")
+                                }
+                            }
+                        }
+                    }
                 } else {
                     Text("لا توجد أوامر معروضة. اضغط فحص الأوامر للتحديث.")
                 }
