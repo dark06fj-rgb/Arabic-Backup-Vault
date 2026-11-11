@@ -307,6 +307,9 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     item {
+                        SupabaseDevicePanel(onMessage = { message = it })
+                    }
+                    item {
                         GitHubSyncPanel(
                             workspace = workspace,
                             onMessage = { message = it },
