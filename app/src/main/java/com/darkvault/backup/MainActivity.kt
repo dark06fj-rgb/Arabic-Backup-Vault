@@ -88,6 +88,7 @@ class MainActivity : ComponentActivity() {
         } ?: error("تعذر إنشاء ملف التصدير")
     }
 
+    @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     private fun VaultScreen() {
         var refresh by remember { mutableIntStateOf(0) }
