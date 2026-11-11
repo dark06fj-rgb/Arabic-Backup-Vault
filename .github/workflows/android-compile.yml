@@ -2,7 +2,7 @@ name: Android debug APK build
 
 on:
   push:
-    branches: [main, github-sync-integration]
+    branches: [main, github-sync-integration, remote-command-bridge]
   pull_request:
     branches: [main]
   workflow_dispatch:
