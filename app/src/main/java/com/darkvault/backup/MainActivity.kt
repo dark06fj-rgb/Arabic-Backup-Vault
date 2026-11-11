@@ -306,6 +306,14 @@ class MainActivity : ComponentActivity() {
                             Text("استيراد نسخة ZIP والتحقق منها")
                         }
                     }
+                    item {
+                        GitHubSyncPanel(
+                            workspace = workspace,
+                            onMessage = { message = it },
+                            onWorkspaceChanged = { refresh++ },
+                            beforeOverwrite = { label -> createSnapshot(label) }
+                        )
+                    }
                     if (busy) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
                     item { Text("ملفات مساحة العمل (${files.size})", style = MaterialTheme.typography.titleMedium) }
                     if (files.isEmpty()) item { Text("لا توجد ملفات بعد. استورد ملفاتك للبدء.") }
