@@ -1,0 +1,2 @@
+[functions.vault-device]
+verify_jwt = false
