@@ -230,10 +230,10 @@ internal fun SupabaseDevicePanel(onMessage: (String) -> Unit) {
                             connected = false
                             deviceId = ""
                             commands = emptyList()
-                            onMessage("فُصل الجهاز وحُذفت بيانات مفتاحه من الهاتف")
+                            onMessage("حُذف مفتاح الجهاز من الهاتف فقط؛ يبقى سجل الجهاز على الخادم")
                         },
                         enabled = !busy
-                    ) { Text("فصل الجهاز") }
+                    ) { Text("حذف المفتاح من الهاتف") }
                 }
                 if (commands.isNotEmpty()) {
                     Text("الأوامر الواردة (عرض فقط — لا يتم تنفيذها)")
