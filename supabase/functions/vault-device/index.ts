@@ -49,38 +49,14 @@ Deno.serve(async (req) => {
       return json({ error: "invalid_enrollment_input" }, 400);
     }
 
-    const codeHash = await sha256(pairingCode);
-    const { data: code, error: codeError } = await db
-      .from("vault_enrollment_codes")
-      .select("id, expires_at, consumed_at")
-      .eq("code_hash", codeHash)
-      .is("consumed_at", null)
-      .maybeSingle();
+    const { data: deviceId, error: enrollError } = await db.rpc("enroll_vault_device", {
+      p_code_hash: await sha256(pairingCode),
+      p_device_key_hash: await sha256(deviceSecret),
+      p_label: label,
+    });
+    if (enrollError || !deviceId) return json({ error: "pairing_code_invalid_expired_or_used" }, 401);
 
-    if (codeError || !code || new Date(code.expires_at).getTime() <= Date.now()) {
-      return json({ error: "pairing_code_invalid_or_expired" }, 401);
-    }
-
-    const { data: device, error: insertError } = await db
-      .from("vault_devices")
-      .insert({ label, device_key_hash: await sha256(deviceSecret) })
-      .select("id")
-      .single();
-
-    if (insertError || !device) return json({ error: "device_registration_failed" }, 500);
-
-    const { error: consumeError } = await db
-      .from("vault_enrollment_codes")
-      .update({ consumed_at: new Date().toISOString() })
-      .eq("id", code.id)
-      .is("consumed_at", null);
-
-    if (consumeError) {
-      await db.from("vault_devices").delete().eq("id", device.id);
-      return json({ error: "pairing_code_consume_failed" }, 500);
-    }
-
-    return json({ device_id: device.id });
+    return json({ device_id: deviceId });
   }
 
   const deviceSecret = req.headers.get("x-device-key") ?? "";
