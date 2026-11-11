@@ -96,7 +96,7 @@ class MainActivity : ComponentActivity() {
         check(temporary.mkdirs()) { "تعذر إنشاء مجلد النسخة المؤقت" }
         try {
             val data = File(temporary, "files")
-            check(workspace.copyRecursively(data, overwrite = true).isSuccess) { "تعذر نسخ مساحة العمل" }
+            runCatching { workspace.copyRecursively(data, overwrite = true) }.getOrElse { throw IllegalStateException("تعذر نسخ مساحة العمل", it) }
             writeManifest(data)
             File(temporary, "INFO.txt").writeText("$label\n${Date()}\n", Charsets.UTF_8)
             val final = File(backups, stamp())
@@ -139,7 +139,7 @@ class MainActivity : ComponentActivity() {
         val stage = File(stagingRoot, UUID.randomUUID().toString())
         val rollback = File(stagingRoot, "rollback_${UUID.randomUUID()}")
         try {
-            check(source.copyRecursively(stage, overwrite = true).isSuccess) { "تعذر تجهيز الملفات للاستعادة" }
+            runCatching { source.copyRecursively(stage, overwrite = true) }.getOrElse { throw IllegalStateException("تعذر تجهيز الملفات للاستعادة", it) }
             if (workspace.exists()) check(workspace.renameTo(rollback)) { "تعذر حفظ مساحة العمل الحالية" }
             if (!stage.renameTo(workspace)) {
                 if (rollback.exists()) rollback.renameTo(workspace)
