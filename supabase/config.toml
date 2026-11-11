@@ -1,2 +1,5 @@
 [functions.vault-device]
 verify_jwt = false
+
+[functions.vault-mcp]
+verify_jwt = false
