@@ -125,7 +125,8 @@ private object GitHubApi {
 
     fun download(repo: String, branch: String, path: String, token: String?): ByteArray {
         val encodedPath = path.split("/").joinToString("/") { enc(it) }
-        return request("https://raw.githubusercontent.com/" + repo + "/" + enc(branch) + "/" + encodedPath, token = token)
+        val encodedBranch = branch.split("/").joinToString("/") { enc(it) }
+        return request("https://raw.githubusercontent.com/" + repo + "/" + encodedBranch + "/" + encodedPath, token = token)
     }
 
     fun upload(repo: String, branch: String, path: String, file: File, token: String, oldSha: String?) {
