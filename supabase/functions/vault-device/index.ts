@@ -107,6 +107,20 @@ Deno.serve(async (req) => {
     return json({ ok: true, status });
   }
 
+  if (action === "start") {
+    const { data, error } = await db
+      .from("vault_commands")
+      .update({ status: "running" })
+      .eq("id", commandId)
+      .eq("device_id", device.id)
+      .eq("status", "approved")
+      .gt("expires_at", new Date().toISOString())
+      .select("id")
+      .maybeSingle();
+    if (error || !data) return json({ error: "command_not_approved_or_already_started" }, 409);
+    return json({ ok: true, status: "running" });
+  }
+
   if (action === "complete" || action === "fail") {
     const patch = action === "complete"
       ? { status: "completed", completed_at: new Date().toISOString(), result: body.result ?? {} }
@@ -120,10 +134,10 @@ Deno.serve(async (req) => {
       .update(patch)
       .eq("id", commandId)
       .eq("device_id", device.id)
-      .eq("status", "approved")
+      .eq("status", "running")
       .select("id")
       .maybeSingle();
-    if (error || !data) return json({ error: "command_not_approved_or_already_finished" }, 409);
+    if (error || !data) return json({ error: "command_not_running_or_already_finished" }, 409);
     return json({ ok: true });
   }
 
