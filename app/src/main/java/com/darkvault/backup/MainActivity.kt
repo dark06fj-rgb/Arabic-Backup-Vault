@@ -127,9 +127,21 @@ class MainActivity : ComponentActivity() {
             contentResolver.openInputStream(uri)?.use { input ->
                 temporary.outputStream().buffered().use { output -> input.copyTo(output) }
             } ?: error("تعذر قراءة الملف")
-            if (destination.exists()) createSnapshot("قبل استبدال $name")
-            if (destination.exists() && !destination.delete()) error("تعذر استبدال الملف القديم")
-            check(temporary.renameTo(destination)) { "تعذر حفظ الملف المستورد" }
+            if (destination.exists()) {
+                createSnapshot("قبل استبدال $name")
+                val previous = File(stagingRoot, "previous_${UUID.randomUUID()}")
+                check(destination.renameTo(previous)) { "تعذر حفظ الملف القديم مؤقتاً" }
+                try {
+                    check(temporary.renameTo(destination)) { "تعذر تثبيت الملف الجديد" }
+                    previous.delete()
+                } catch (error: Throwable) {
+                    if (destination.exists()) destination.delete()
+                    check(previous.renameTo(destination)) { "تعذر استرجاع الملف القديم؛ احتفظنا بنسخته المؤقتة: ${previous.name}" }
+                    throw error
+                }
+            } else {
+                check(temporary.renameTo(destination)) { "تعذر حفظ الملف المستورد" }
+            }
         } finally {
             temporary.delete()
         }
@@ -181,6 +193,7 @@ class MainActivity : ComponentActivity() {
         try {
             var totalBytes = 0L
             var entries = 0
+            val seenPaths = mutableSetOf<String>()
             contentResolver.openInputStream(uri)?.use { raw ->
                 ZipInputStream(raw.buffered()).use { zip ->
                     while (true) {
@@ -191,6 +204,10 @@ class MainActivity : ComponentActivity() {
                         check(path.isNotBlank() && !path.startsWith("/") && path.split('/').none { it == ".." || it == "." || it.isBlank() }) {
                             "ملف ZIP يحتوي مساراً غير آمن"
                         }
+                        check(path == "INFO.txt" || path.startsWith("files/")) {
+                            "ملف ZIP ليس نسخة صادرة من خزنة النسخ الاحتياطية"
+                        }
+                        check(seenPaths.add(path)) { "ملف ZIP يحتوي مساراً مكرراً" }
                         if (!entry.isDirectory) {
                             val out = File(temp, path)
                             check(out.canonicalPath.startsWith(temp.canonicalPath + File.separator)) { "مسار ZIP خارج مجلد الاستيراد" }
@@ -258,7 +275,9 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        val files = remember(refresh) { workspace.listFiles()?.filter { it.isFile }?.sortedBy { it.name.lowercase() } ?: emptyList() }
+        val files = remember(refresh) {
+            listFiles(workspace).sortedBy { it.relativeTo(workspace).invariantSeparatorsPath.lowercase() }
+        }
         val snapshots = remember(refresh) { backups.listFiles()?.filter { it.isDirectory && !it.name.startsWith(".tmp_") }?.sortedByDescending { it.name } ?: emptyList() }
 
         MaterialTheme {
@@ -290,9 +309,9 @@ class MainActivity : ComponentActivity() {
                     if (busy) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
                     item { Text("ملفات مساحة العمل (${files.size})", style = MaterialTheme.typography.titleMedium) }
                     if (files.isEmpty()) item { Text("لا توجد ملفات بعد. استورد ملفاتك للبدء.") }
-                    items(files, key = { it.name }) { file ->
+                    items(files, key = { it.relativeTo(workspace).invariantSeparatorsPath }) { file ->
                         ListItem(
-                            headlineContent = { Text(file.name) },
+                            headlineContent = { Text(file.relativeTo(workspace).invariantSeparatorsPath) },
                             supportingContent = { Text("${file.length()} بايت") },
                             leadingContent = { Icon(Icons.Default.InsertDriveFile, null) }
                         )
