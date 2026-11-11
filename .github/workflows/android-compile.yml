@@ -1,4 +1,4 @@
-name: Android compile check
+name: Android debug APK build
 
 on:
   push:
@@ -28,5 +28,12 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Compile Kotlin
-        run: gradle :app:compileDebugKotlin
+      - name: Build debug APK
+        run: gradle :app:assembleDebug
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Arabic-Backup-Vault-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
